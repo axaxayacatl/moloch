@@ -1,0 +1,181 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>MOLOCH // single-server void</title>
+
+<style>
+html, body {
+  margin: 0;
+  padding: 0;
+  background: black;
+  overflow: hidden;
+  font-family: monospace;
+}
+
+canvas {
+  display: block;
+}
+
+#hud {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  color: rgba(255,255,255,0.6);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+#subhud {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  color: rgba(255,255,255,0.4);
+  font-size: 11px;
+}
+</style>
+</head>
+
+<body>
+<div id="hud">MOLOCH // connecting...</div>
+<div id="subhud">move mouse to wander</div>
+<canvas id="c"></canvas>
+
+<script>
+const WS_URL = "wss://YOUR_SERVER_URL"; // <-- change this
+
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+function resize(){
+  canvas.width = innerWidth;
+  canvas.height = innerHeight;
+}
+addEventListener("resize", resize);
+resize();
+
+const hud = document.getElementById("hud");
+
+let mouse = { x: innerWidth/2, y: innerHeight/2 };
+addEventListener("mousemove", e => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+});
+
+let id = null;
+let players = {};
+let houses = [];
+let cycle = 0;
+
+const ws = new WebSocket(WS_URL);
+
+ws.onopen = () => {
+  hud.textContent = "MOLOCH // connected";
+};
+
+ws.onmessage = (e) => {
+  const msg = JSON.parse(e.data);
+
+  if (msg.type === "id") {
+    id = msg.id;
+    hud.textContent = "MOLOCH // id: " + id;
+  }
+
+  if (msg.type === "state") {
+    players = msg.players;
+    houses = msg.houses;
+    cycle = msg.cycle;
+  }
+};
+
+ws.onclose = () => {
+  hud.textContent = "MOLOCH // disconnected";
+};
+
+function sendMove(){
+  if (ws.readyState !== 1 || !id) return;
+
+  ws.send(JSON.stringify({
+    type: "move",
+    x: mouse.x,
+    y: mouse.y
+  }));
+}
+
+function drawVoid(){
+  ctx.fillStyle = "black";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  ctx.strokeStyle = "rgba(255,255,255,0.03)";
+  for (let i = 0; i < 20; i++) {
+    ctx.beginPath();
+    ctx.moveTo(0, i * canvas.height / 20);
+    ctx.lineTo(canvas.width, i * canvas.height / 20);
+    ctx.stroke();
+  }
+}
+
+function drawHouses(){
+  for (let h of houses) {
+    ctx.beginPath();
+    ctx.arc(h.x, h.y, h.r, 0, Math.PI * 2);
+
+    if (h.owner) {
+      ctx.fillStyle = "rgba(0,255,120,0.18)";
+    } else {
+      ctx.fillStyle = "rgba(255,255,255,0.07)";
+    }
+
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(255,255,255,0.15)";
+    ctx.stroke();
+  }
+}
+
+function drawPlayers(){
+  for (let pid in players) {
+    const p = players[pid];
+
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+
+    if (pid === id) {
+      ctx.fillStyle = "white";
+    } else {
+      ctx.fillStyle = "rgba(255,80,80,0.8)";
+    }
+
+    ctx.fill();
+  }
+}
+
+function drawHUD(){
+  const pct = Math.floor(cycle * 100);
+
+  ctx.fillStyle = "rgba(255,255,255,0.5)";
+  ctx.fillText("cycle: " + pct + "%", 10, canvas.height - 30);
+
+  const me = players[id];
+  if (me && me.house !== null) {
+    ctx.fillText("status: housed", 10, canvas.height - 15);
+  } else {
+    ctx.fillText("status: wandering", 10, canvas.height - 15);
+  }
+}
+
+function loop(){
+  requestAnimationFrame(loop);
+
+  sendMove();
+
+  drawVoid();
+  drawHouses();
+  drawPlayers();
+  drawHUD();
+}
+
+loop();
+</script>
+</body>
+</html>
