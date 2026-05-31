@@ -1,181 +1,213 @@
 <!doctype html>
 <html>
 <head>
-<meta charset="utf-8" />
-<title>MOLOCH // single-server void</title>
+<meta charset="utf-8">
+<title>MOLOCH</title>
 
 <style>
-html, body {
-  margin: 0;
-  padding: 0;
-  background: black;
-  overflow: hidden;
-  font-family: monospace;
+html,body{
+  margin:0;
+  overflow:hidden;
+  background:black;
 }
 
-canvas {
-  display: block;
+canvas{display:block}
+
+
+#fog{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:
+    radial-gradient(circle at 50% 50%,
+      rgba(0,0,0,0.2),
+      rgba(0,0,0,0.9)
+    );
+  mix-blend-mode:screen;
+  opacity:0.8;
+  animation: breathe 8s ease-in-out infinite;
 }
 
-#hud {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  color: rgba(255,255,255,0.6);
-  font-size: 12px;
-  pointer-events: none;
-}
-
-#subhud {
-  position: absolute;
-  bottom: 10px;
-  left: 10px;
-  color: rgba(255,255,255,0.4);
-  font-size: 11px;
+@keyframes breathe{
+  0%{transform:scale(1);}
+  50%{transform:scale(1.05);}
+  100%{transform:scale(1);}
 }
 </style>
 </head>
 
 <body>
-<div id="hud">MOLOCH // connecting...</div>
-<div id="subhud">move mouse to wander</div>
+
+<div id="fog"></div>
 <canvas id="c"></canvas>
 
 <script>
-const WS_URL = "wss://YOUR_SERVER_URL"; // <-- change this
+const c=document.getElementById("c");
+const x=c.getContext("2d");
 
-const canvas = document.getElementById("c");
-const ctx = canvas.getContext("2d");
+function resize(){c.width=innerWidth;c.height=innerHeight}
+addEventListener("resize",resize);resize();
 
-function resize(){
-  canvas.width = innerWidth;
-  canvas.height = innerHeight;
-}
-addEventListener("resize", resize);
-resize();
 
-const hud = document.getElementById("hud");
+let player;
+let houses=[];
+let t0=Date.now();
 
-let mouse = { x: innerWidth/2, y: innerHeight/2 };
-addEventListener("mousemove", e => {
-  mouse.x = e.clientX;
-  mouse.y = e.clientY;
-});
+function rand(a,b){return Math.random()*(b-a)+a;}
 
-let id = null;
-let players = {};
-let houses = [];
-let cycle = 0;
 
-const ws = new WebSocket(WS_URL);
+const SIGILS=[
+  [255,80,80],   // red
+  [80,160,255],  // blue
+  [80,255,140],  // green
+  [255,200,80]   // gold
+];
 
-ws.onopen = () => {
-  hud.textContent = "MOLOCH // connected";
-};
-
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-
-  if (msg.type === "id") {
-    id = msg.id;
-    hud.textContent = "MOLOCH // id: " + id;
-  }
-
-  if (msg.type === "state") {
-    players = msg.players;
-    houses = msg.houses;
-    cycle = msg.cycle;
-  }
-};
-
-ws.onclose = () => {
-  hud.textContent = "MOLOCH // disconnected";
-};
-
-function sendMove(){
-  if (ws.readyState !== 1 || !id) return;
-
-  ws.send(JSON.stringify({
-    type: "move",
-    x: mouse.x,
-    y: mouse.y
-  }));
-}
-
-function drawVoid(){
-  ctx.fillStyle = "black";
-  ctx.fillRect(0,0,canvas.width,canvas.height);
-
-  ctx.strokeStyle = "rgba(255,255,255,0.03)";
-  for (let i = 0; i < 20; i++) {
-    ctx.beginPath();
-    ctx.moveTo(0, i * canvas.height / 20);
-    ctx.lineTo(canvas.width, i * canvas.height / 20);
-    ctx.stroke();
+function spawn(){
+  houses=[];
+  for(let i=0;i<14;i++){
+    houses.push({
+      x:rand(100,c.width-100),
+      y:rand(100,c.height-100),
+      r:60,
+      pulse:Math.random()*10,
+      owner:null
+    });
   }
 }
 
-function drawHouses(){
-  for (let h of houses) {
-    ctx.beginPath();
-    ctx.arc(h.x, h.y, h.r, 0, Math.PI * 2);
+function start(){
+  player={
+    x:c.width/2,
+    y:c.height/2,
+    vx:0,
+    vy:0,
+    sigil:Math.floor(Math.random()*4),
+    intensity:0
+  };
 
-    if (h.owner) {
-      ctx.fillStyle = "rgba(0,255,120,0.18)";
-    } else {
-      ctx.fillStyle = "rgba(255,255,255,0.07)";
+  spawn();
+}
+
+start();
+
+
+let keys={};
+addEventListener("keydown",e=>keys[e.key]=true);
+addEventListener("keyup",e=>keys[e.key]=false);
+
+
+function update(){
+  let t=(Date.now()-t0)/9000;
+
+  if(t>1){
+    t0=Date.now();
+    spawn();
+  }
+
+
+  let a=0.18;
+
+  if(keys["ArrowUp"]) player.vy-=a;
+  if(keys["ArrowDown"]) player.vy+=a;
+  if(keys["ArrowLeft"]) player.vx-=a;
+  if(keys["ArrowRight"]) player.vx+=a;
+
+  player.vx*=0.92;
+  player.vy*=0.92;
+
+  player.x+=player.vx;
+  player.y+=player.vy;
+
+  player.x=Math.max(0,Math.min(c.width,player.x));
+  player.y=Math.max(0,Math.min(c.height,player.y));
+
+ 
+  player.intensity*=0.95;
+
+  for(let h of houses){
+    let dx=player.x-h.x;
+    let dy=player.y-h.y;
+    let d=Math.hypot(dx,dy);
+
+    if(d<h.r){
+      h.owner=true;
+      player.intensity=Math.min(1,player.intensity+0.08);
     }
+  }
 
-    ctx.fill();
+  return t;
+}
 
-    ctx.strokeStyle = "rgba(255,255,255,0.15)";
-    ctx.stroke();
+
+function glow(x0,y0,r,color,alpha){
+  let g=x.createRadialGradient(x0,y0,0,x0,y0,r);
+  g.addColorStop(0,`rgba(${color},${alpha})`);
+  g.addColorStop(1,"rgba(0,0,0,0)");
+
+  x.fillStyle=g;
+  x.beginPath();
+  x.arc(x0,y0,r,0,7);
+  x.fill();
+}
+
+
+function aura(x0,y0,color,intensity){
+  for(let i=0;i<3;i++){
+    glow(
+      x0+(Math.random()-0.5)*10*intensity,
+      y0+(Math.random()-0.5)*10*intensity,
+      80+Math.random()*40,
+      color.join(","),
+      0.12*intensity
+    );
   }
 }
 
-function drawPlayers(){
-  for (let pid in players) {
-    const p = players[pid];
 
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+function draw(t){
 
-    if (pid === id) {
-      ctx.fillStyle = "white";
-    } else {
-      ctx.fillStyle = "rgba(255,80,80,0.8)";
-    }
+  x.fillStyle="rgba(0,0,0,0.22)";
+  x.fillRect(0,0,c.width,c.height);
 
-    ctx.fill();
+
+  for(let h of houses){
+    let pulse=60+Math.sin(t*6+h.pulse)*10;
+
+    glow(
+      h.x,h.y,
+      pulse,
+      h.owner?"0,255,140":"200,200,255",
+      h.owner?0.18:0.06
+    );
   }
-}
 
-function drawHUD(){
-  const pct = Math.floor(cycle * 100);
 
-  ctx.fillStyle = "rgba(255,255,255,0.5)";
-  ctx.fillText("cycle: " + pct + "%", 10, canvas.height - 30);
+  let sig=SIGILS[player.sigil];
 
-  const me = players[id];
-  if (me && me.house !== null) {
-    ctx.fillText("status: housed", 10, canvas.height - 15);
-  } else {
-    ctx.fillText("status: wandering", 10, canvas.height - 15);
+  aura(player.x,player.y,sig,player.intensity+0.5);
+
+  x.fillStyle=`rgb(${sig[0]},${sig[1]},${sig[2]})`;
+  x.beginPath();
+  x.arc(player.x,player.y,3,0,7);
+  x.fill();
+
+  x.strokeStyle="rgba(255,255,255,0.03)";
+  for(let i=0;i<6;i++){
+    x.beginPath();
+    x.moveTo(0,Math.sin(t*3+i)*c.height);
+    x.lineTo(c.width,Math.cos(t*2+i)*c.height);
+    x.stroke();
   }
 }
 
 function loop(){
   requestAnimationFrame(loop);
-
-  sendMove();
-
-  drawVoid();
-  drawHouses();
-  drawPlayers();
-  drawHUD();
+  let t=update();
+  draw(t);
 }
-
 loop();
 </script>
+
 </body>
 </html>
