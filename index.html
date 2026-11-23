@@ -1,613 +1,590 @@
 
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MOLOCH</title>
 
 <style>
-html,body{
-  margin:0;
-  overflow:hidden;
-  background:black;
+* {
+    box-sizing: border-box;
 }
 
-canvas{display:block}
-
-#fog{
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-  background:
-    radial-gradient(circle at 50% 50%,
-      rgba(0,0,0,0.2),
-      rgba(0,0,0,0.9)
-    );
-  mix-blend-mode:screen;
-  opacity:0.8;
-  animation:breathe 8s ease-in-out infinite;
+html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    color: #fff;
+    font-family: monospace;
 }
 
-@keyframes breathe{
-  0%{transform:scale(1);}
-  50%{transform:scale(1.05);}
-  100%{transform:scale(1);}
+canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: #000;
 }
 
-/* Multiplayer cursors */
-
-#moloch-cursors{
-  position:fixed;
-  inset:0;
-  overflow:hidden;
-  pointer-events:none;
-  z-index:10;
+#fog {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse at center,
+        transparent 20%,
+        rgba(0,0,0,.25) 65%,
+        rgba(0,0,0,.9) 100%);
+    animation: fog 12s ease-in-out infinite alternate;
 }
 
-.moloch-cursor{
-  position:absolute;
-  width:9px;
-  height:9px;
-  border-radius:50%;
-  transform:translate(-50%,-50%);
-  pointer-events:none;
-  box-shadow:0 0 9px currentColor,0 0 20px currentColor;
-  will-change:left,top;
+@keyframes fog {
+    from { opacity: .55; }
+    to { opacity: 1; }
 }
 
-/* Single Play control */
-
-#play-screen{
-  position:fixed;
-  inset:0;
-  z-index:30;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background:rgba(0,0,0,0.12);
+#cursors {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
 }
 
-#play-button{
-  appearance:none;
-  background:rgba(0,0,0,0.65);
-  border:1px solid rgba(255,255,255,0.55);
-  color:white;
-  padding:13px 32px;
-  font-family:monospace;
-  font-size:13px;
-  letter-spacing:5px;
-  cursor:pointer;
-  transition:background .2s,border-color .2s;
+.moloch-cursor {
+    position: absolute;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 12px currentColor;
+    pointer-events: none;
 }
 
-#play-button:hover{
-  background:rgba(255,255,255,0.12);
-  border-color:white;
+.moloch-cursor::after {
+    content: "";
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    opacity: .4;
 }
 
-#play-button:focus-visible{
-  outline:1px solid white;
-  outline-offset:5px;
+#play-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,.75);
+}
+
+#play-button {
+    color: white;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,.5);
+    padding: 14px 36px;
+    font: inherit;
+    font-size: 13px;
+    letter-spacing: 5px;
+    cursor: pointer;
+    transition: .2s;
+}
+
+#play-button:hover {
+    color: #ff303b;
+    border-color: #ff303b;
+    box-shadow: 0 0 25px rgba(255,48,59,.35);
+}
+
+#play-screen.hidden {
+    display: none;
 }
 </style>
 </head>
 
 <body>
 
+<canvas id="game"></canvas>
 <div id="fog"></div>
-<canvas id="c"></canvas>
-<div id="moloch-cursors"></div>
+<div id="cursors"></div>
 
 <div id="play-screen">
-  <button id="play-button" type="button">PLAY</button>
+    <button id="play-button">PLAY</button>
 </div>
 
 <script type="module">
+import { joinRoom } from "https://esm.run/trystero@0.27.0";
 
-import {joinRoom} from "https://esm.run/trystero@0.27.0";
+/* --------------------------------------------------
+   MOLOCH MULTIPLAYER CONFIGURATION
+-------------------------------------------------- */
 
-/* =========================================
-   MOLOCH
-   Original game
-   ========================================= */
+const APP_ID = "moloch-global-multiplayer";
+const ROOM_ID = "global";
 
-const c=document.getElementById("c");
-const x=c.getContext("2d");
+let room = null;
+let playerState = null;
+let multiplayerStarted = false;
 
-function resize(){
-  c.width=innerWidth;
-  c.height=innerHeight;
+const remotePlayers = new Map();
+const remoteCursors = new Map();
+
+/* --------------------------------------------------
+   CANVAS
+-------------------------------------------------- */
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const cursorsElement = document.getElementById("cursors");
+
+let width = window.innerWidth;
+let height = window.innerHeight;
+let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+function resize() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+
+    canvas.style.width = width + "px";
+    canvas.style.height = height + "px";
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-addEventListener("resize",resize);
+window.addEventListener("resize", resize);
 resize();
 
-let player;
-let houses=[];
-let t0=Date.now();
+/* --------------------------------------------------
+   RANDOM PLAYER COLOR
+-------------------------------------------------- */
 
-function rand(a,b){
-  return Math.random()*(b-a)+a;
-}
-
-const SIGILS=[
-  [255,80,80],
-  [80,160,255],
-  [80,255,140],
-  [255,200,80]
+const SIGILS = [
+    [255, 80, 80],
+    [80, 160, 255],
+    [80, 255, 140],
+    [255, 200, 80],
+    [210, 100, 255],
+    [255, 100, 190],
+    [100, 230, 255],
+    [220, 220, 220]
 ];
 
-function spawn(){
-  houses=[];
+const myColorRGB = SIGILS[
+    Math.floor(Math.random() * SIGILS.length)
+];
 
-  for(let i=0;i<14;i++){
+const myColor = `rgb(${myColorRGB.join(",")})`;
+
+function colorString(color) {
+    if (!Array.isArray(color)) return "rgb(255,255,255)";
+    return `rgb(${color[0]},${color[1]},${color[2]})`;
+}
+
+/* --------------------------------------------------
+   DETERMINISTIC WORLD GENERATION
+
+   Every browser generates the same houses.
+-------------------------------------------------- */
+
+function seededRandom(seed) {
+    let value = seed;
+
+    return function() {
+        value = (value * 16807) % 2147483647;
+        return (value - 1) / 2147483646;
+    };
+}
+
+const random = seededRandom(666);
+
+const houses = [];
+
+for (let i = 0; i < 14; i++) {
     houses.push({
-      x:rand(100,c.width-100),
-      y:rand(100,c.height-100),
-      r:60,
-      pulse:Math.random()*10,
-      owner:null
+        x: 0.1 + random() * 0.8,
+        y: 0.1 + random() * 0.8,
+        r: 60,
+        pulse: random() * 10,
+        owner: null,
+        intensity: 0
     });
-  }
 }
 
-function start(){
-  player={
-    x:c.width/2,
-    y:c.height/2,
-    vx:0,
-    vy:0,
-    sigil:Math.floor(Math.random()*4),
-    intensity:0
-  };
+/* --------------------------------------------------
+   LOCAL PLAYER
+-------------------------------------------------- */
 
-  spawn();
-}
+const player = {
+    x: 0.5,
+    y: 0.5,
+    vx: 0,
+    vy: 0,
+    color: myColorRGB,
+    intensity: 1
+};
 
-start();
+let pointerX = 0.5;
+let pointerY = 0.5;
 
-/* =========================================
-   CONTROLS
-   ========================================= */
+let keys = {};
 
-let keys={};
+window.addEventListener("keydown", event => {
+    const key = event.key.toLowerCase();
 
-addEventListener("keydown",e=>{
-  keys[e.key]=true;
+    if ([
+        "arrowup",
+        "arrowdown",
+        "arrowleft",
+        "arrowright",
+        "w",
+        "a",
+        "s",
+        "d"
+    ].includes(key)) {
+        event.preventDefault();
+        keys[key] = true;
+    }
 });
 
-addEventListener("keyup",e=>{
-  keys[e.key]=false;
+window.addEventListener("keyup", event => {
+    keys[event.key.toLowerCase()] = false;
 });
 
-addEventListener("blur",()=>{
-  keys={};
+window.addEventListener("blur", () => {
+    keys = {};
 });
 
-/* =========================================
-   MULTIPLAYER CONFIGURATION
-   ========================================= */
+window.addEventListener("pointermove", event => {
+    pointerX = event.clientX / width;
+    pointerY = event.clientY / height;
+});
 
-const APP_ID="axayacatl.neocities.org/moloch";
-const ROOM_ID="global";
+/* --------------------------------------------------
+   MULTIPLAYER
+-------------------------------------------------- */
 
-const cursorLayer=document.getElementById("moloch-cursors");
+async function startMultiplayer() {
+    if (multiplayerStarted) return;
 
-const myColor="#"+Math.floor(Math.random()*16777215)
-  .toString(16).padStart(6,"0");
+    multiplayerStarted = true;
 
-const localCursor=document.createElement("div");
-localCursor.className="moloch-cursor";
-localCursor.style.background=myColor;
-localCursor.style.color=myColor;
-cursorLayer.appendChild(localCursor);
+    try {
+        room = joinRoom(
+            {
+                appId: APP_ID,
+                identity: "none"
+            },
+            ROOM_ID
+        );
 
-let pointerX=innerWidth/2;
-let pointerY=innerHeight/2;
+        room.onError(error => {
+            console.error("MOLOCH multiplayer error:", error);
+        });
 
-addEventListener("pointermove",event=>{
-  pointerX=event.clientX;
-  pointerY=event.clientY;
+        room.onUserJoin(({ userId }) => {
+            console.log("MOLOCH player joined:", userId);
+        });
 
-  localCursor.style.left=pointerX+"px";
-  localCursor.style.top=pointerY+"px";
-},{passive:true});
+        room.onUserLeave(({ userId }) => {
+            removeRemotePlayer(userId);
+        });
 
-localCursor.style.left=pointerX+"px";
-localCursor.style.top=pointerY+"px";
+        playerState = room.makeUserState("moloch-player", {
+            x: player.x,
+            y: player.y,
+            pointerX,
+            pointerY,
+            color: myColorRGB
+        });
 
-/* =========================================
-   PEER-TO-PEER WORLD
-   ========================================= */
+        playerState.onChange((data, metadata) => {
+            const { userId, self, removed } = metadata;
 
-let room=null;
-let sendPlayerState=null;
-let multiplayerStarted=false;
+            if (self) return;
 
-const remotePlayers=new Map();
+            if (removed) {
+                removeRemotePlayer(userId);
+                return;
+            }
 
-function createRemoteCursor(userId,color){
-  if(remotePlayers.has(userId)){
-    return remotePlayers.get(userId);
-  }
+            updateRemotePlayer(userId, data);
+        });
 
-  const cursor=document.createElement("div");
-  cursor.className="moloch-cursor";
+        console.log("MOLOCH multiplayer initialized.");
 
-  cursor.style.background=color;
-  cursor.style.color=color;
-
-  cursorLayer.appendChild(cursor);
-
-  const remote={
-    id:userId,
-    color,
-    x:0.5,
-    y:0.5,
-    pointerX:0.5,
-    pointerY:0.5,
-    cursor
-  };
-
-  remotePlayers.set(userId,remote);
-
-  return remote;
+    } catch (error) {
+        console.error("MOLOCH connection failed:", error);
+        multiplayerStarted = false;
+    }
 }
 
-function removeRemotePlayer(userId){
-  const remote=remotePlayers.get(userId);
+/* --------------------------------------------------
+   REMOTE PLAYER MANAGEMENT
+-------------------------------------------------- */
 
-  if(!remote)return;
+function updateRemotePlayer(userId, data) {
+    if (!data) return;
 
-  remote.cursor.remove();
-  remotePlayers.delete(userId);
+    remotePlayers.set(userId, {
+        x: Number(data.x) || 0,
+        y: Number(data.y) || 0,
+        color: data.color || [255,255,255]
+    });
+
+    let cursor = remoteCursors.get(userId);
+
+    if (!cursor) {
+        cursor = document.createElement("div");
+        cursor.className = "moloch-cursor";
+        cursorsElement.appendChild(cursor);
+        remoteCursors.set(userId, cursor);
+    }
+
+    const px = Math.max(0, Math.min(1, Number(data.pointerX) || 0));
+    const py = Math.max(0, Math.min(1, Number(data.pointerY) || 0));
+
+    cursor.style.left = (px * width) + "px";
+    cursor.style.top = (py * height) + "px";
+    cursor.style.color = colorString(data.color);
+    cursor.style.background = colorString(data.color);
 }
 
-function receivePlayerState(data,meta){
-  if(!data || !meta || !meta.userId)return;
+function removeRemotePlayer(userId) {
+    remotePlayers.delete(userId);
 
-  const userId=meta.userId;
+    const cursor = remoteCursors.get(userId);
 
-  if(userId===localUserId)return;
-
-  const remote=createRemoteCursor(
-    userId,
-    data.color||"#ffffff"
-  );
-
-  remote.color=data.color||remote.color;
-
-  remote.x=data.x;
-  remote.y=data.y;
-
-  remote.pointerX=data.pointerX;
-  remote.pointerY=data.pointerY;
-
-  remote.cursor.style.background=remote.color;
-  remote.cursor.style.color=remote.color;
-
-  remote.cursor.style.left=
-    (remote.pointerX*innerWidth)+"px";
-
-  remote.cursor.style.top=
-    (remote.pointerY*innerHeight)+"px";
+    if (cursor) {
+        cursor.remove();
+        remoteCursors.delete(userId);
+    }
 }
 
-let localUserId=null;
+/* --------------------------------------------------
+   SEND PLAYER STATE
+-------------------------------------------------- */
 
-function sendState(){
-  if(!sendPlayerState)return;
+let lastStateUpdate = 0;
 
-  sendPlayerState({
-    x:player.x/c.width,
-    y:player.y/c.height,
+function sendPlayerState(timestamp) {
+    if (!playerState) return;
 
-    pointerX:pointerX/innerWidth,
-    pointerY:pointerY/innerHeight,
+    if (timestamp - lastStateUpdate < 50) return;
 
-    color:myColor,
-    sigil:player.sigil
-  });
+    lastStateUpdate = timestamp;
+
+    playerState.set({
+        x: player.x,
+        y: player.y,
+        pointerX,
+        pointerY,
+        color: myColorRGB
+    });
 }
 
-async function enterMultiplayer(){
+/* --------------------------------------------------
+   MOVEMENT
+-------------------------------------------------- */
 
-  if(multiplayerStarted)return;
+function updatePlayer() {
+    const acceleration = 0.0018;
+    const damping = 0.92;
 
-  multiplayerStarted=true;
+    if (keys["arrowup"] || keys["w"]) {
+        player.vy -= acceleration;
+    }
 
-  document.getElementById("play-screen").remove();
+    if (keys["arrowdown"] || keys["s"]) {
+        player.vy += acceleration;
+    }
 
-  t0=Date.now();
+    if (keys["arrowleft"] || keys["a"]) {
+        player.vx -= acceleration;
+    }
 
-  try{
+    if (keys["arrowright"] || keys["d"]) {
+        player.vx += acceleration;
+    }
 
-    /*
-      Trystero uses public Nostr relays for discovery
-      and WebRTC data channels for direct gameplay.
-    */
+    player.vx *= damping;
+    player.vy *= damping;
 
-    room=joinRoom(
-      {
-        appId:APP_ID,
-        identity:"none"
-      },
-      ROOM_ID,
-      {
-        onJoinError:({peerId,error})=>{
-          console.warn("MOLOCH peer connection error:",peerId,error);
+    player.x += player.vx;
+    player.y += player.vy;
+
+    player.x = Math.max(0.015, Math.min(0.985, player.x));
+    player.y = Math.max(0.015, Math.min(0.985, player.y));
+
+    houses.forEach(house => {
+        const dx = player.x * width - house.x * width;
+        const dy = player.y * height - house.y * height;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance < house.r) {
+            house.owner = myColorRGB;
+            house.intensity = Math.min(1, house.intensity + 0.02);
+        } else {
+            house.intensity *= 0.995;
         }
-      }
-    );
+    });
+}
 
-    const identity=await room.getSelf();
-    localUserId=identity.userId;
+/* --------------------------------------------------
+   DRAWING
+-------------------------------------------------- */
 
-    const stateAction=room.makeAction("moloch-player-state");
+function drawBackground() {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, width, height);
+}
 
-    sendPlayerState=stateAction.send;
+function drawHouses(time) {
+    houses.forEach(house => {
+        const x = house.x * width;
+        const y = house.y * height;
 
-    stateAction.onMessage((data,meta)=>{
-      receivePlayerState(data,meta);
+        const pulse = Math.sin(time * 0.001 + house.pulse) * 5;
+        const radius = house.r + pulse;
+
+        let color = house.owner
+            ? colorString(house.owner)
+            : "rgba(255,255,255,.45)";
+
+        ctx.save();
+
+        ctx.shadowBlur = 20 + house.intensity * 30;
+        ctx.shadowColor = color;
+
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = 0.2 + house.intensity * 0.8;
+        ctx.lineWidth = 1;
+
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.globalAlpha *= 0.35;
+        ctx.beginPath();
+        ctx.arc(x, y, radius * 0.55, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.5 + house.intensity * 0.5;
+
+        ctx.beginPath();
+        ctx.arc(x, y, 2 + house.intensity * 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+    });
+}
+
+function drawPlayer(x, y, color, local = false) {
+    const px = x * width;
+    const py = y * height;
+
+    const rgb = colorString(color);
+
+    ctx.save();
+
+    ctx.shadowColor = rgb;
+    ctx.shadowBlur = local ? 30 : 20;
+
+    ctx.fillStyle = rgb;
+    ctx.globalAlpha = 0.9;
+
+    ctx.beginPath();
+    ctx.arc(px, py, local ? 5 : 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.3;
+    ctx.strokeStyle = rgb;
+    ctx.lineWidth = 1;
+
+    ctx.beginPath();
+    ctx.arc(px, py, local ? 15 : 12, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+function drawConnections() {
+    ctx.save();
+
+    ctx.lineWidth = 0.5;
+    ctx.globalAlpha = 0.12;
+
+    remotePlayers.forEach(remote => {
+        ctx.strokeStyle = colorString(remote.color);
+
+        ctx.beginPath();
+        ctx.moveTo(player.x * width, player.y * height);
+        ctx.lineTo(remote.x * width, remote.y * height);
+        ctx.stroke();
     });
 
-    /*
-      Existing players announce their current state
-      when another player joins.
-    */
+    ctx.restore();
+}
 
-    room.onUserJoin(({userId})=>{
-      sendState();
+function render(time) {
+    drawBackground();
+    drawHouses(time);
+    drawConnections();
+
+    remotePlayers.forEach(remote => {
+        drawPlayer(remote.x, remote.y, remote.color);
     });
 
-    /*
-      Remove remote cursors when a player leaves.
-    */
-
-    room.onUserLeave(({userId})=>{
-      removeRemotePlayer(userId);
-    });
-
-    room.onError(error=>{
-      console.warn("MOLOCH multiplayer:",error);
-    });
-
-    sendState();
-
-  }catch(error){
-
-    console.error("MOLOCH multiplayer initialization failed:",error);
-
-    multiplayerStarted=false;
-
-  }
+    drawPlayer(player.x, player.y, player.color, true);
 }
 
-/* =========================================
-   PLAY
-   ========================================= */
-
-document.getElementById("play-button").addEventListener(
-  "click",
-  enterMultiplayer
-);
-
-/* =========================================
-   ORIGINAL GAME UPDATE
-   ========================================= */
-
-function update(){
-
-  let t=(Date.now()-t0)/9000;
-
-  if(t>1){
-    t0=Date.now();
-    spawn();
-  }
-
-  let a=0.18;
-
-  if(keys["ArrowUp"])player.vy-=a;
-  if(keys["ArrowDown"])player.vy+=a;
-  if(keys["ArrowLeft"])player.vx-=a;
-  if(keys["ArrowRight"])player.vx+=a;
-
-  player.vx*=0.92;
-  player.vy*=0.92;
-
-  player.x+=player.vx;
-  player.y+=player.vy;
-
-  player.x=Math.max(0,Math.min(c.width,player.x));
-  player.y=Math.max(0,Math.min(c.height,player.y));
-
-  player.intensity*=0.95;
-
-  for(let h of houses){
-
-    let dx=player.x-h.x;
-    let dy=player.y-h.y;
-    let d=Math.hypot(dx,dy);
-
-    if(d<h.r){
-      h.owner=true;
-      player.intensity=Math.min(
-        1,
-        player.intensity+0.08
-      );
-    }
-  }
-
-  return t;
-}
-
-/* =========================================
-   ORIGINAL VISUAL EFFECTS
-   ========================================= */
-
-function glow(x0,y0,r,color,alpha){
-
-  let g=x.createRadialGradient(
-    x0,y0,0,
-    x0,y0,r
-  );
-
-  g.addColorStop(0,`rgba(${color},${alpha})`);
-  g.addColorStop(1,"rgba(0,0,0,0)");
-
-  x.fillStyle=g;
-  x.beginPath();
-  x.arc(x0,y0,r,0,7);
-  x.fill();
-}
-
-function aura(x0,y0,color,intensity){
-
-  for(let i=0;i<3;i++){
-
-    glow(
-      x0+(Math.random()-0.5)*10*intensity,
-      y0+(Math.random()-0.5)*10*intensity,
-      80+Math.random()*40,
-      color.join(","),
-      0.12*intensity
-    );
-
-  }
-}
-
-/* =========================================
-   DRAW
-   ========================================= */
-
-function draw(t){
-
-  x.fillStyle="rgba(0,0,0,0.22)";
-  x.fillRect(0,0,c.width,c.height);
-
-  for(let h of houses){
-
-    let pulse=60+Math.sin(t*6+h.pulse)*10;
-
-    glow(
-      h.x,h.y,
-      pulse,
-      h.owner?"0,255,140":"200,200,255",
-      h.owner?0.18:0.06
-    );
-
-  }
-
-  let sig=SIGILS[player.sigil];
-
-  aura(
-    player.x,
-    player.y,
-    sig,
-    player.intensity+0.5
-  );
-
-  x.fillStyle=`rgb(${sig[0]},${sig[1]},${sig[2]})`;
-  x.beginPath();
-  x.arc(player.x,player.y,3,0,7);
-  x.fill();
-
-  /*
-    Remote players appear in the same world
-    using their individually assigned colors.
-  */
-
-  for(const remote of remotePlayers.values()){
-
-    const rx=remote.x*c.width;
-    const ry=remote.y*c.height;
-
-    x.save();
-
-    x.fillStyle=remote.color;
-    x.shadowColor=remote.color;
-    x.shadowBlur=15;
-
-    x.beginPath();
-    x.arc(rx,ry,4,0,Math.PI*2);
-    x.fill();
-
-    x.restore();
-
-  }
-
-  x.strokeStyle="rgba(255,255,255,0.03)";
-
-  for(let i=0;i<6;i++){
-
-    x.beginPath();
-
-    x.moveTo(
-      0,
-      Math.sin(t*3+i)*c.height
-    );
-
-    x.lineTo(
-      c.width,
-      Math.cos(t*2+i)*c.height
-    );
-
-    x.stroke();
-
-  }
-
-}
-
-/* =========================================
+/* --------------------------------------------------
    MAIN LOOP
-   ========================================= */
+-------------------------------------------------- */
 
-let lastNetworkUpdate=0;
+function loop(timestamp) {
+    updatePlayer();
+    render(timestamp);
+    sendPlayerState(timestamp);
 
-function loop(){
-
-  requestAnimationFrame(loop);
-
-  let t=update();
-
-  draw(t);
-
-  /*
-    20 updates per second per player.
-    Gameplay data travels directly through
-    WebRTC connections.
-  */
-
-  if(multiplayerStarted && sendPlayerState){
-
-    const now=performance.now();
-
-    if(now-lastNetworkUpdate>=50){
-
-      lastNetworkUpdate=now;
-      sendState();
-
-    }
-
-  }
-
+    requestAnimationFrame(loop);
 }
 
-loop();
+requestAnimationFrame(loop);
 
-/* =========================================
-   DISCONNECT ON EXIT
-   ========================================= */
+/* --------------------------------------------------
+   PLAY
+-------------------------------------------------- */
 
-addEventListener("pagehide",()=>{
-  if(room){
-    room.leave();
-    room=null;
-  }
+document.getElementById("play-button").addEventListener("click", async () => {
+    document.getElementById("play-screen").classList.add("hidden");
+
+    await startMultiplayer();
+});
+
+/* --------------------------------------------------
+   AUTOMATIC DEPARTURE
+-------------------------------------------------- */
+
+window.addEventListener("pagehide", () => {
+    if (room) {
+        room.leave();
+    }
 });
 
 </script>
-
 </body>
 </html>
+
