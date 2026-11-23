@@ -1,7 +1,10 @@
+
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="license" content="MIT">
 <title>MOLOCH</title>
 
 <style>
@@ -12,7 +15,6 @@ html,body{
 }
 
 canvas{display:block}
-
 
 #fog{
   position:absolute;
@@ -25,13 +27,33 @@ canvas{display:block}
     );
   mix-blend-mode:screen;
   opacity:0.8;
-  animation: breathe 8s ease-in-out infinite;
+  animation:breathe 8s ease-in-out infinite;
 }
 
 @keyframes breathe{
   0%{transform:scale(1);}
   50%{transform:scale(1.05);}
   100%{transform:scale(1);}
+}
+
+/* Multiplayer cursors */
+#moloch-cursors{
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  overflow:hidden;
+  z-index:10;
+}
+
+.moloch-cursor{
+  position:absolute;
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  transform:translate(-50%,-50%);
+  pointer-events:none;
+  will-change:left,top;
+  box-shadow:0 0 8px currentColor,0 0 18px currentColor;
 }
 </style>
 </head>
@@ -40,31 +62,45 @@ canvas{display:block}
 
 <div id="fog"></div>
 <canvas id="c"></canvas>
+<div id="moloch-cursors"></div>
 
 <script>
+"use strict";
+
+/* =========================================
+   MOLOCH
+   Original gameplay and rendering
+   ========================================= */
+
 const c=document.getElementById("c");
 const x=c.getContext("2d");
 
-function resize(){c.width=innerWidth;c.height=innerHeight}
-addEventListener("resize",resize);resize();
+function resize(){
+  c.width=innerWidth;
+  c.height=innerHeight;
+}
 
+addEventListener("resize",resize);
+resize();
 
 let player;
 let houses=[];
 let t0=Date.now();
 
-function rand(a,b){return Math.random()*(b-a)+a;}
-
+function rand(a,b){
+  return Math.random()*(b-a)+a;
+}
 
 const SIGILS=[
-  [255,80,80],   // red
-  [80,160,255],  // blue
-  [80,255,140],  // green
-  [255,200,80]   // gold
+  [255,80,80],
+  [80,160,255],
+  [80,255,140],
+  [255,200,80]
 ];
 
 function spawn(){
   houses=[];
+
   for(let i=0;i<14;i++){
     houses.push({
       x:rand(100,c.width-100),
@@ -91,11 +127,194 @@ function start(){
 
 start();
 
+/* =========================================
+   CONTROLS
+   ========================================= */
 
 let keys={};
-addEventListener("keydown",e=>keys[e.key]=true);
-addEventListener("keyup",e=>keys[e.key]=false);
 
+addEventListener("keydown",e=>{
+  keys[e.key]=true;
+
+  if([
+    "ArrowUp",
+    "ArrowDown",
+    "ArrowLeft",
+    "ArrowRight"
+  ].includes(e.key)){
+    e.preventDefault();
+  }
+});
+
+addEventListener("keyup",e=>{
+  keys[e.key]=false;
+});
+
+addEventListener("blur",()=>{
+  keys={};
+});
+
+/* =========================================
+   MULTIPLAYER
+   Automatic same-origin synchronization
+   No lobby, buttons, or interface
+   ========================================= */
+
+const MULTIPLAYER_CHANNEL="moloch-world-v1";
+
+const multiplayer={
+  id:(
+    typeof crypto!=="undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2)+Date.now()
+  ),
+
+  color:`hsl(${Math.floor(Math.random()*360)},100%,65%)`,
+
+  channel:null,
+  players:new Map(),
+
+  pointer:{
+    x:0.5,
+    y:0.5
+  },
+
+  lastSent:0
+};
+
+const cursorLayer=document.getElementById("moloch-cursors");
+
+if("BroadcastChannel" in window){
+
+  multiplayer.channel=new BroadcastChannel(MULTIPLAYER_CHANNEL);
+
+  multiplayer.channel.addEventListener("message",event=>{
+    const data=event.data;
+
+    if(!data || data.id===multiplayer.id) return;
+
+    if(data.type==="leave"){
+      removeRemotePlayer(data.id);
+      return;
+    }
+
+    if(data.type!=="state") return;
+
+    let remote=multiplayer.players.get(data.id);
+
+    if(!remote){
+      const cursor=document.createElement("div");
+
+      cursor.className="moloch-cursor";
+      cursor.style.background=data.color || "#ffffff";
+      cursor.style.color=data.color || "#ffffff";
+
+      cursorLayer.appendChild(cursor);
+
+      remote={
+        id:data.id,
+        color:data.color || "#ffffff",
+        cursor,
+        x:0.5,
+        y:0.5,
+        playerX:0.5,
+        playerY:0.5,
+        lastSeen:Date.now()
+      };
+
+      multiplayer.players.set(data.id,remote);
+    }
+
+    remote.color=data.color || remote.color;
+    remote.x=data.pointerX ?? remote.x;
+    remote.y=data.pointerY ?? remote.y;
+    remote.playerX=data.playerX ?? remote.playerX;
+    remote.playerY=data.playerY ?? remote.playerY;
+    remote.lastSeen=Date.now();
+
+    remote.cursor.style.background=remote.color;
+    remote.cursor.style.color=remote.color;
+
+    remote.cursor.style.left=(remote.x*innerWidth)+"px";
+    remote.cursor.style.top=(remote.y*innerHeight)+"px";
+  });
+
+}
+
+function removeRemotePlayer(id){
+  const remote=multiplayer.players.get(id);
+
+  if(!remote) return;
+
+  remote.cursor.remove();
+  multiplayer.players.delete(id);
+}
+
+/* Track the local pointer without affecting movement. */
+
+addEventListener("pointermove",event=>{
+  multiplayer.pointer.x=event.clientX/innerWidth;
+  multiplayer.pointer.y=event.clientY/innerHeight;
+},{passive:true});
+
+/* Send player and pointer positions. */
+
+function sendMultiplayerState(force=false){
+  if(!multiplayer.channel) return;
+
+  const now=performance.now();
+
+  if(!force && now-multiplayer.lastSent<40) return;
+
+  multiplayer.lastSent=now;
+
+  multiplayer.channel.postMessage({
+    type:"state",
+    id:multiplayer.id,
+    color:multiplayer.color,
+
+    pointerX:multiplayer.pointer.x,
+    pointerY:multiplayer.pointer.y,
+
+    playerX:player.x/c.width,
+    playerY:player.y/c.height,
+
+    timestamp:Date.now()
+  });
+}
+
+/* Remove players who have stopped sending updates. */
+
+setInterval(()=>{
+  const now=Date.now();
+
+  for(const [id,remote] of multiplayer.players){
+    if(now-remote.lastSeen>5000){
+      removeRemotePlayer(id);
+    }
+  }
+
+  sendMultiplayerState(true);
+},1000);
+
+/* Announce this player immediately. */
+
+sendMultiplayerState(true);
+
+addEventListener("pagehide",()=>{
+  if(multiplayer.channel){
+    multiplayer.channel.postMessage({
+      type:"leave",
+      id:multiplayer.id
+    });
+
+    multiplayer.channel.close();
+  }
+});
+
+/* =========================================
+   ORIGINAL GAME UPDATE
+   ========================================= */
 
 function update(){
   let t=(Date.now()-t0)/9000;
@@ -104,7 +323,6 @@ function update(){
     t0=Date.now();
     spawn();
   }
-
 
   let a=0.18;
 
@@ -122,7 +340,6 @@ function update(){
   player.x=Math.max(0,Math.min(c.width,player.x));
   player.y=Math.max(0,Math.min(c.height,player.y));
 
- 
   player.intensity*=0.95;
 
   for(let h of houses){
@@ -136,12 +353,18 @@ function update(){
     }
   }
 
+  sendMultiplayerState();
+
   return t;
 }
 
+/* =========================================
+   ORIGINAL VISUAL EFFECTS
+   ========================================= */
 
 function glow(x0,y0,r,color,alpha){
   let g=x.createRadialGradient(x0,y0,0,x0,y0,r);
+
   g.addColorStop(0,`rgba(${color},${alpha})`);
   g.addColorStop(1,"rgba(0,0,0,0)");
 
@@ -150,7 +373,6 @@ function glow(x0,y0,r,color,alpha){
   x.arc(x0,y0,r,0,7);
   x.fill();
 }
-
 
 function aura(x0,y0,color,intensity){
   for(let i=0;i<3;i++){
@@ -164,12 +386,14 @@ function aura(x0,y0,color,intensity){
   }
 }
 
+/* =========================================
+   ORIGINAL DRAWING + REMOTE PLAYERS
+   ========================================= */
 
 function draw(t){
 
   x.fillStyle="rgba(0,0,0,0.22)";
   x.fillRect(0,0,c.width,c.height);
-
 
   for(let h of houses){
     let pulse=60+Math.sin(t*6+h.pulse)*10;
@@ -182,7 +406,6 @@ function draw(t){
     );
   }
 
-
   let sig=SIGILS[player.sigil];
 
   aura(player.x,player.y,sig,player.intensity+0.5);
@@ -193,21 +416,49 @@ function draw(t){
   x.fill();
 
   x.strokeStyle="rgba(255,255,255,0.03)";
+
   for(let i=0;i<6;i++){
     x.beginPath();
     x.moveTo(0,Math.sin(t*3+i)*c.height);
     x.lineTo(c.width,Math.cos(t*2+i)*c.height);
     x.stroke();
   }
+
+  /* Remote player markers.
+     Each player has an independently assigned color. */
+
+  for(const remote of multiplayer.players.values()){
+
+    const rx=remote.playerX*c.width;
+    const ry=remote.playerY*c.height;
+
+    x.save();
+
+    x.shadowBlur=14;
+    x.shadowColor=remote.color;
+    x.fillStyle=remote.color;
+
+    x.beginPath();
+    x.arc(rx,ry,3,0,Math.PI*2);
+    x.fill();
+
+    x.restore();
+  }
 }
+
+/* =========================================
+   MAIN LOOP
+   ========================================= */
 
 function loop(){
   requestAnimationFrame(loop);
+
   let t=update();
   draw(t);
 }
-loop();
-</script>
 
+loop();
+
+</script>
 </body>
 </html>
