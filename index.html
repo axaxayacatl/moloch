@@ -67,9 +67,22 @@ canvas{display:block;width:100%;height:100%;background:#000}
     inset:0;
     z-index:10;
     display:flex;
+    flex-direction:column;
     align-items:center;
     justify-content:center;
+    gap:28px;
+    padding:24px;
     background:rgba(0,0,0,.78);
+}
+
+#play-logo{
+    display:block;
+    width:min( min(82vw, 760px), 100%);
+    max-height:55vh;
+    object-fit:contain;
+    filter:drop-shadow(0 0 24px rgba(255,210,0,.18));
+    user-select:none;
+    pointer-events:none;
 }
 
 #play-button{
@@ -77,10 +90,11 @@ canvas{display:block;width:100%;height:100%;background:#000}
     color:white;
     background:rgba(0,0,0,.7);
     border:1px solid rgba(255,255,255,.65);
-    padding:16px 42px;
+    padding:16px 48px;
     font:inherit;
-    font-size:13px;
-    letter-spacing:7px;
+    font-size:14px;
+    font-weight:bold;
+    letter-spacing:8px;
     cursor:pointer;
     transition:.2s;
     box-shadow:0 0 18px rgba(255,255,255,.08);
@@ -97,8 +111,9 @@ canvas{display:block;width:100%;height:100%;background:#000}
 
 #play-button:hover{
     color:#fff;
-    border-color:#00f5ff;
-    box-shadow:0 0 12px #00f5ff,0 0 35px rgba(255,48,190,.4);
+    border-color:#ffe600;
+    box-shadow:0 0 12px #ffe600,0 0 35px rgba(255,48,190,.4);
+    transform:translateY(-2px);
 }
 
 #play-screen.hidden{display:none}
@@ -160,6 +175,12 @@ canvas{display:block;width:100%;height:100%;background:#000}
     from{background-position:0% 0}
     to{background-position:200% 0}
 }
+
+@media(max-width:600px){
+    #play-screen{gap:20px}
+    #play-logo{width:94vw;max-height:42vh}
+    #play-button{padding:14px 38px;font-size:12px}
+}
 </style>
 </head>
 <body>
@@ -170,7 +191,15 @@ canvas{display:block;width:100%;height:100%;background:#000}
 <div id="scanlines"></div>
 <div id="cursors"></div>
 <div id="spectrum"></div>
-<div id="play-screen"><button id="play-button">PLAY</button></div>
+
+<div id="play-screen">
+    <img
+        id="play-logo"
+        src="https://raw.githubusercontent.com/axaxayacatl/moloch/main/MOLOCH.png"
+        alt="MOLOCH"
+    >
+    <button id="play-button">PLAY</button>
+</div>
 
 <script type="module">
 import {joinRoom} from "https://esm.run/trystero@0.27.0";
@@ -818,4 +847,3 @@ window.addEventListener("pagehide",()=>{
 </script>
 </body>
 </html>
-
