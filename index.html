@@ -1,589 +1,820 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MOLOCH</title>
-
 <style>
-* {
-    box-sizing: border-box;
-}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color:#fff;font-family:monospace}
+canvas{display:block;width:100%;height:100%;background:#000}
 
-html, body {
-    margin: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: #000;
-    color: #fff;
-    font-family: monospace;
-}
-
-canvas {
-    display: block;
-    width: 100%;
-    height: 100%;
-    background: #000;
-}
-
-#fog {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
+#fog{
+    position:fixed;
+    inset:0;
+    pointer-events:none;
     background:
-        radial-gradient(ellipse at center,
-        transparent 20%,
-        rgba(0,0,0,.25) 65%,
-        rgba(0,0,0,.9) 100%);
-    animation: fog 12s ease-in-out infinite alternate;
+        radial-gradient(ellipse at 50% 50%,transparent 15%,rgba(0,0,0,.25) 65%,rgba(0,0,0,.86) 100%);
 }
 
-@keyframes fog {
-    from { opacity: .55; }
-    to { opacity: 1; }
+#cursors{
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    overflow:hidden;
 }
 
-#cursors {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    overflow: hidden;
+.moloch-cursor{
+    position:absolute;
+    width:21px;
+    height:21px;
+    transform:translate(-50%,-50%);
+    background:currentColor;
+    clip-path:polygon(
+        50% 0%,59% 29%,84% 7%,75% 38%,
+        100% 50%,75% 62%,93% 91%,
+        61% 76%,50% 100%,39% 76%,
+        7% 91%,25% 62%,0% 50%,
+        25% 38%,16% 7%,41% 29%
+    );
+    filter:drop-shadow(0 0 5px currentColor);
+    animation:cursor-spin 2.4s linear infinite;
 }
 
-.moloch-cursor {
-    position: absolute;
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    box-shadow: 0 0 12px currentColor;
-    pointer-events: none;
+.moloch-cursor:after{
+    content:"";
+    position:absolute;
+    inset:-5px;
+    background:currentColor;
+    opacity:.35;
+    clip-path:polygon(
+        50% 0%,55% 39%,82% 9%,65% 44%,
+        100% 50%,61% 55%,91% 85%,
+        56% 65%,50% 100%,44% 61%,
+        9% 91%,35% 56%,0% 50%,
+        39% 44%,9% 9%,44% 39%
+    );
+    animation:cursor-spin 3.8s linear infinite reverse;
 }
 
-.moloch-cursor::after {
-    content: "";
-    position: absolute;
-    width: 22px;
-    height: 22px;
-    border: 1px solid currentColor;
-    border-radius: 50%;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    opacity: .4;
+@keyframes cursor-spin{
+    from{rotate:0deg}
+    to{rotate:360deg}
 }
 
-#play-screen {
-    position: fixed;
-    inset: 0;
-    z-index: 10;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0,0,0,.75);
+#play-screen{
+    position:fixed;
+    inset:0;
+    z-index:10;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(0,0,0,.78);
 }
 
-#play-button {
-    color: white;
-    background: transparent;
-    border: 1px solid rgba(255,255,255,.5);
-    padding: 14px 36px;
-    font: inherit;
-    font-size: 13px;
-    letter-spacing: 5px;
-    cursor: pointer;
-    transition: .2s;
+#play-button{
+    position:relative;
+    color:white;
+    background:rgba(0,0,0,.7);
+    border:1px solid rgba(255,255,255,.65);
+    padding:16px 42px;
+    font:inherit;
+    font-size:13px;
+    letter-spacing:7px;
+    cursor:pointer;
+    transition:.2s;
+    box-shadow:0 0 18px rgba(255,255,255,.08);
 }
 
-#play-button:hover {
-    color: #ff303b;
-    border-color: #ff303b;
-    box-shadow: 0 0 25px rgba(255,48,59,.35);
+#play-button:before{
+    content:"";
+    position:absolute;
+    inset:-3px;
+    border:1px solid transparent;
+    border-image:linear-gradient(90deg,#ff303b,#ffb52e,#b7ff37,#00f5ff,#8b5cff,#ff45c8) 1;
+    pointer-events:none;
 }
 
-#play-screen.hidden {
-    display: none;
+#play-button:hover{
+    color:#fff;
+    border-color:#00f5ff;
+    box-shadow:0 0 12px #00f5ff,0 0 35px rgba(255,48,190,.4);
+}
+
+#play-screen.hidden{display:none}
+
+#scanlines{
+    position:fixed;
+    inset:0;
+    z-index:3;
+    pointer-events:none;
+    opacity:.13;
+    background:repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 3px,
+        rgba(180,220,255,.17) 4px
+    );
+}
+
+#chromatic-edge{
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    z-index:2;
+    opacity:.48;
+    background:
+        linear-gradient(90deg,
+            rgba(255,0,70,.12),
+            transparent 9%,
+            transparent 91%,
+            rgba(0,220,255,.12)
+        ),
+        linear-gradient(0deg,
+            rgba(120,0,255,.09),
+            transparent 12%,
+            transparent 88%,
+            rgba(255,220,0,.08)
+        );
+    mix-blend-mode:screen;
+}
+
+#spectrum{
+    position:fixed;
+    height:2px;
+    left:0;
+    right:0;
+    bottom:0;
+    z-index:4;
+    pointer-events:none;
+    background:linear-gradient(90deg,
+        #ff1744,#ff8a00,#eeff00,#00ff9d,
+        #00d9ff,#5b61ff,#d500f9,#ff1744
+    );
+    background-size:200% 100%;
+    animation:spectrum-flow 4s linear infinite;
+    box-shadow:0 0 12px rgba(0,220,255,.5);
+}
+
+@keyframes spectrum-flow{
+    from{background-position:0% 0}
+    to{background-position:200% 0}
 }
 </style>
 </head>
-
 <body>
 
 <canvas id="game"></canvas>
 <div id="fog"></div>
+<div id="chromatic-edge"></div>
+<div id="scanlines"></div>
 <div id="cursors"></div>
-
-<div id="play-screen">
-    <button id="play-button">PLAY</button>
-</div>
+<div id="spectrum"></div>
+<div id="play-screen"><button id="play-button">PLAY</button></div>
 
 <script type="module">
-import { joinRoom } from "https://esm.run/trystero@0.27.0";
+import {joinRoom} from "https://esm.run/trystero@0.27.0";
 
-/* --------------------------------------------------
-   MOLOCH MULTIPLAYER CONFIGURATION
--------------------------------------------------- */
+/* MOLOCH MULTIPLAYER */
+const APP_ID="axayacatl.github.io/moloch";
+const ROOM_ID="global";
 
-const APP_ID = "moloch-global-multiplayer";
-const ROOM_ID = "global";
+let room=null;
+let playerUpdate=null;
+let multiplayerStarted=false;
+let myUserId=null;
+let lastStateUpdate=0;
 
-let room = null;
-let playerState = null;
-let multiplayerStarted = false;
+const remotePlayers=new Map();
+const remoteCursors=new Map();
 
-const remotePlayers = new Map();
-const remoteCursors = new Map();
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+const cursorsElement=document.getElementById("cursors");
 
-/* --------------------------------------------------
-   CANVAS
--------------------------------------------------- */
+let width=innerWidth;
+let height=innerHeight;
+let dpr=Math.min(devicePixelRatio||1,2);
 
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
-
-const cursorsElement = document.getElementById("cursors");
-
-let width = window.innerWidth;
-let height = window.innerHeight;
-let dpr = Math.min(window.devicePixelRatio || 1, 2);
-
-function resize() {
-    width = window.innerWidth;
-    height = window.innerHeight;
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
-
-    canvas.width = Math.floor(width * dpr);
-    canvas.height = Math.floor(height * dpr);
-
-    canvas.style.width = width + "px";
-    canvas.style.height = height + "px";
-
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+function resize(){
+    width=innerWidth;
+    height=innerHeight;
+    dpr=Math.min(devicePixelRatio||1,2);
+    canvas.width=Math.floor(width*dpr);
+    canvas.height=Math.floor(height*dpr);
+    canvas.style.width=width+"px";
+    canvas.style.height=height+"px";
+    ctx.setTransform(dpr,0,0,dpr,0,0);
 }
-
-window.addEventListener("resize", resize);
+addEventListener("resize",resize);
 resize();
 
-/* --------------------------------------------------
-   RANDOM PLAYER COLOR
--------------------------------------------------- */
-
-const SIGILS = [
-    [255, 80, 80],
-    [80, 160, 255],
-    [80, 255, 140],
-    [255, 200, 80],
-    [210, 100, 255],
-    [255, 100, 190],
-    [100, 230, 255],
-    [220, 220, 220]
+/* PLAYER COLORS */
+const SIGILS=[
+    [255,80,80],
+    [80,160,255],
+    [80,255,140],
+    [255,200,80],
+    [210,100,255],
+    [255,100,190],
+    [100,230,255],
+    [220,220,220]
 ];
 
-const myColorRGB = SIGILS[
-    Math.floor(Math.random() * SIGILS.length)
-];
+const myColorRGB=SIGILS[Math.floor(Math.random()*SIGILS.length)];
 
-const myColor = `rgb(${myColorRGB.join(",")})`;
-
-function colorString(color) {
-    if (!Array.isArray(color)) return "rgb(255,255,255)";
+function colorString(color){
+    if(!Array.isArray(color))return "rgb(255,255,255)";
     return `rgb(${color[0]},${color[1]},${color[2]})`;
 }
 
-/* --------------------------------------------------
-   DETERMINISTIC WORLD GENERATION
+/* LOCAL PLAYER */
+const player={
+    x:.5,y:.5,vx:0,vy:0,color:myColorRGB
+};
 
-   Every browser generates the same houses.
--------------------------------------------------- */
+let pointerX=.5;
+let pointerY=.5;
+let keys={};
 
-function seededRandom(seed) {
-    let value = seed;
+addEventListener("keydown",event=>{
+    const key=event.key.toLowerCase();
+    if(["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"].includes(key)){
+        event.preventDefault();
+        keys[key]=true;
+    }
+});
 
-    return function() {
-        value = (value * 16807) % 2147483647;
-        return (value - 1) / 2147483646;
+addEventListener("keyup",event=>{
+    keys[event.key.toLowerCase()]=false;
+});
+
+addEventListener("blur",()=>{keys={};});
+
+addEventListener("pointermove",event=>{
+    pointerX=event.clientX/width;
+    pointerY=event.clientY/height;
+});
+
+/* SHARED HOUSE STAGES */
+const STAGE_DURATION=40000;
+const HOUSE_COUNT=14;
+const CAPTURE_RADIUS=55;
+
+let currentStage=Math.floor(Date.now()/STAGE_DURATION);
+let houses=[];
+
+function seededRandom(seed){
+    let value=seed%2147483647;
+    if(value<=0)value+=2147483646;
+    return function(){
+        value=value*16807%2147483647;
+        return (value-1)/2147483646;
     };
 }
 
-const random = seededRandom(666);
+function generateHouses(stage){
+    const random=seededRandom(stage+666);
+    const result=[];
 
-const houses = [];
-
-for (let i = 0; i < 14; i++) {
-    houses.push({
-        x: 0.1 + random() * 0.8,
-        y: 0.1 + random() * 0.8,
-        r: 60,
-        pulse: random() * 10,
-        owner: null,
-        intensity: 0
-    });
+    for(let i=0;i<HOUSE_COUNT;i++){
+        result.push({
+            id:i,
+            x:.08+random()*.84,
+            y:.12+random()*.76,
+            owner:null,
+            color:null,
+            captureAt:0,
+            captureBy:null,
+            intensity:0
+        });
+    }
+    return result;
 }
 
-/* --------------------------------------------------
-   LOCAL PLAYER
--------------------------------------------------- */
+houses=generateHouses(currentStage);
 
-const player = {
-    x: 0.5,
-    y: 0.5,
-    vx: 0,
-    vy: 0,
-    color: myColorRGB,
-    intensity: 1
-};
+function changeStage(stage){
+    if(stage===currentStage)return;
+    currentStage=stage;
+    houses=generateHouses(stage);
+    lastCaptureAttempt.clear();
+}
 
-let pointerX = 0.5;
-let pointerY = 0.5;
+/* HOUSE CAPTURE */
+const lastCaptureAttempt=new Map();
 
-let keys = {};
+function applyCapture(data){
+    if(!data||data.stage!==currentStage)return;
 
-window.addEventListener("keydown", event => {
-    const key = event.key.toLowerCase();
+    const house=houses.find(h=>h.id===data.houseId);
+    if(!house||!Number.isFinite(data.timestamp))return;
+    if(!Array.isArray(data.color)||data.color.length!==3)return;
 
-    if ([
-        "arrowup",
-        "arrowdown",
-        "arrowleft",
-        "arrowright",
-        "w",
-        "a",
-        "s",
-        "d"
-    ].includes(key)) {
-        event.preventDefault();
-        keys[key] = true;
-    }
-});
+    const incomingTime=data.timestamp;
+    const incomingId=String(data.userId);
 
-window.addEventListener("keyup", event => {
-    keys[event.key.toLowerCase()] = false;
-});
+    if(house.captureAt>incomingTime)return;
+    if(house.captureAt===incomingTime&&house.captureBy&&house.captureBy>=incomingId)return;
 
-window.addEventListener("blur", () => {
-    keys = {};
-});
+    house.owner=incomingId;
+    house.color=data.color;
+    house.captureAt=incomingTime;
+    house.captureBy=incomingId;
+    house.intensity=1;
+}
 
-window.addEventListener("pointermove", event => {
-    pointerX = event.clientX / width;
-    pointerY = event.clientY / height;
-});
+function captureHouse(house){
+    if(!myUserId||house.owner===myUserId)return;
 
-/* --------------------------------------------------
-   MULTIPLAYER
--------------------------------------------------- */
+    const now=Date.now();
+    const previous=lastCaptureAttempt.get(house.id)||0;
+    if(now-previous<650)return;
 
-async function startMultiplayer() {
-    if (multiplayerStarted) return;
+    lastCaptureAttempt.set(house.id,now);
 
-    multiplayerStarted = true;
+    const packet={
+        type:"capture",
+        stage:currentStage,
+        houseId:house.id,
+        userId:myUserId,
+        color:myColorRGB,
+        timestamp:now
+    };
 
-    try {
-        room = joinRoom(
-            {
-                appId: APP_ID,
-                identity: "none"
-            },
-            ROOM_ID
-        );
+    applyCapture(packet);
+    broadcast(packet);
+}
 
-        room.onError(error => {
-            console.error("MOLOCH multiplayer error:", error);
+/* MULTIPLAYER — PRESERVED */
+async function startMultiplayer(){
+    if(multiplayerStarted)return;
+    multiplayerStarted=true;
+
+    try{
+        room=joinRoom({
+            appId:APP_ID,
+            identity:"none"
+        },ROOM_ID);
+
+        room.onError(error=>{
+            console.error("[MOLOCH NETWORK ERROR]",error);
         });
 
-        room.onUserJoin(({ userId }) => {
-            console.log("MOLOCH player joined:", userId);
-        });
+        playerUpdate=room.makeAction("moloch-position");
 
-        room.onUserLeave(({ userId }) => {
-            removeRemotePlayer(userId);
-        });
+        playerUpdate.onMessage((data,metadata)=>{
+            if(!data)return;
 
-        playerState = room.makeUserState("moloch-player", {
-            x: player.x,
-            y: player.y,
-            pointerX,
-            pointerY,
-            color: myColorRGB
-        });
+            const userId=data.userId||metadata.userId;
 
-        playerState.onChange((data, metadata) => {
-            const { userId, self, removed } = metadata;
-
-            if (self) return;
-
-            if (removed) {
-                removeRemotePlayer(userId);
+            if(data.type==="player"){
+                if(!userId||userId===myUserId)return;
+                updateRemotePlayer(userId,data);
                 return;
             }
 
-            updateRemotePlayer(userId, data);
+            if(data.type==="capture"){
+                applyCapture({...data,userId});
+                return;
+            }
+
+            if(data.type==="snapshot"){
+                if(data.stage>currentStage){
+                    currentStage=data.stage;
+                    houses=generateHouses(currentStage);
+                    lastCaptureAttempt.clear();
+                }
+
+                if(data.stage===currentStage&&Array.isArray(data.houses)){
+                    data.houses.forEach(saved=>{
+                        if(!saved.owner)return;
+                        applyCapture({
+                            stage:currentStage,
+                            houseId:saved.id,
+                            userId:saved.owner,
+                            color:saved.color,
+                            timestamp:saved.captureAt
+                        });
+                    });
+                }
+            }
         });
 
-        console.log("MOLOCH multiplayer initialized.");
+        room.onPeerJoin(()=>{
+            publishPlayerState();
+            publishSnapshot();
+        });
 
-    } catch (error) {
-        console.error("MOLOCH connection failed:", error);
-        multiplayerStarted = false;
+        room.onUserLeave(({userId})=>{
+            removeRemotePlayer(userId);
+        });
+
+        const identity=await room.getSelf();
+        myUserId=identity.userId;
+
+        publishPlayerState();
+        publishSnapshot();
+
+    }catch(error){
+        console.error("[MOLOCH] Multiplayer failed:",error);
+        multiplayerStarted=false;
     }
 }
 
-/* --------------------------------------------------
-   REMOTE PLAYER MANAGEMENT
--------------------------------------------------- */
+function broadcast(packet){
+    if(!playerUpdate)return;
 
-function updateRemotePlayer(userId, data) {
-    if (!data) return;
+    playerUpdate.send({
+        ...packet,
+        userId:packet.userId||myUserId
+    }).catch(error=>{
+        console.error("[MOLOCH] Send failed:",error);
+    });
+}
 
-    remotePlayers.set(userId, {
-        x: Number(data.x) || 0,
-        y: Number(data.y) || 0,
-        color: data.color || [255,255,255]
+function publishPlayerState(){
+    broadcast({
+        type:"player",
+        x:player.x,
+        y:player.y,
+        pointerX,
+        pointerY,
+        color:myColorRGB
+    });
+}
+
+function publishSnapshot(){
+    broadcast({
+        type:"snapshot",
+        stage:currentStage,
+        houses:houses.map(h=>({
+            id:h.id,
+            owner:h.owner,
+            color:h.color,
+            captureAt:h.captureAt
+        }))
+    });
+}
+
+function sendPlayerState(timestamp){
+    if(!playerUpdate)return;
+    if(timestamp-lastStateUpdate<50)return;
+    lastStateUpdate=timestamp;
+    publishPlayerState();
+}
+
+/* REMOTE PLAYER DISPLAY */
+function updateRemotePlayer(userId,data){
+    if(
+        !Number.isFinite(data.x)||
+        !Number.isFinite(data.y)||
+        !Number.isFinite(data.pointerX)||
+        !Number.isFinite(data.pointerY)
+    )return;
+
+    remotePlayers.set(userId,{
+        x:data.x,y:data.y,color:data.color
     });
 
-    let cursor = remoteCursors.get(userId);
+    let cursor=remoteCursors.get(userId);
 
-    if (!cursor) {
-        cursor = document.createElement("div");
-        cursor.className = "moloch-cursor";
+    if(!cursor){
+        cursor=document.createElement("div");
+        cursor.className="moloch-cursor";
         cursorsElement.appendChild(cursor);
-        remoteCursors.set(userId, cursor);
+        remoteCursors.set(userId,cursor);
     }
 
-    const px = Math.max(0, Math.min(1, Number(data.pointerX) || 0));
-    const py = Math.max(0, Math.min(1, Number(data.pointerY) || 0));
-
-    cursor.style.left = (px * width) + "px";
-    cursor.style.top = (py * height) + "px";
-    cursor.style.color = colorString(data.color);
-    cursor.style.background = colorString(data.color);
+    cursor.style.left=(data.pointerX*width)+"px";
+    cursor.style.top=(data.pointerY*height)+"px";
+    cursor.style.background=colorString(data.color);
+    cursor.style.color=colorString(data.color);
 }
 
-function removeRemotePlayer(userId) {
+function removeRemotePlayer(userId){
     remotePlayers.delete(userId);
-
-    const cursor = remoteCursors.get(userId);
-
-    if (cursor) {
+    const cursor=remoteCursors.get(userId);
+    if(cursor){
         cursor.remove();
         remoteCursors.delete(userId);
     }
 }
 
-/* --------------------------------------------------
-   SEND PLAYER STATE
--------------------------------------------------- */
+/* MOVEMENT */
+function updatePlayer(){
+    const acceleration=.0018;
+    const damping=.92;
 
-let lastStateUpdate = 0;
+    if(keys.arrowup||keys.w)player.vy-=acceleration;
+    if(keys.arrowdown||keys.s)player.vy+=acceleration;
+    if(keys.arrowleft||keys.a)player.vx-=acceleration;
+    if(keys.arrowright||keys.d)player.vx+=acceleration;
 
-function sendPlayerState(timestamp) {
-    if (!playerState) return;
+    player.vx*=damping;
+    player.vy*=damping;
 
-    if (timestamp - lastStateUpdate < 50) return;
+    player.x+=player.vx;
+    player.y+=player.vy;
 
-    lastStateUpdate = timestamp;
+    player.x=Math.max(.015,Math.min(.985,player.x));
+    player.y=Math.max(.015,Math.min(.985,player.y));
 
-    playerState.set({
-        x: player.x,
-        y: player.y,
-        pointerX,
-        pointerY,
-        color: myColorRGB
-    });
-}
+    houses.forEach(house=>{
+        const dx=player.x*width-house.x*width;
+        const dy=player.y*height-house.y*height;
 
-/* --------------------------------------------------
-   MOVEMENT
--------------------------------------------------- */
-
-function updatePlayer() {
-    const acceleration = 0.0018;
-    const damping = 0.92;
-
-    if (keys["arrowup"] || keys["w"]) {
-        player.vy -= acceleration;
-    }
-
-    if (keys["arrowdown"] || keys["s"]) {
-        player.vy += acceleration;
-    }
-
-    if (keys["arrowleft"] || keys["a"]) {
-        player.vx -= acceleration;
-    }
-
-    if (keys["arrowright"] || keys["d"]) {
-        player.vx += acceleration;
-    }
-
-    player.vx *= damping;
-    player.vy *= damping;
-
-    player.x += player.vx;
-    player.y += player.vy;
-
-    player.x = Math.max(0.015, Math.min(0.985, player.x));
-    player.y = Math.max(0.015, Math.min(0.985, player.y));
-
-    houses.forEach(house => {
-        const dx = player.x * width - house.x * width;
-        const dy = player.y * height - house.y * height;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance < house.r) {
-            house.owner = myColorRGB;
-            house.intensity = Math.min(1, house.intensity + 0.02);
-        } else {
-            house.intensity *= 0.995;
+        if(Math.hypot(dx,dy)<CAPTURE_RADIUS){
+            captureHouse(house);
         }
     });
 }
 
-/* --------------------------------------------------
-   DRAWING
--------------------------------------------------- */
-
-function drawBackground() {
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, width, height);
+/* BACKGROUND */
+function drawBackground(){
+    ctx.fillStyle="#000";
+    ctx.fillRect(0,0,width,height);
 }
 
-function drawHouses(time) {
-    houses.forEach(house => {
-        const x = house.x * width;
-        const y = house.y * height;
+/* RAINBOW CYBERPUNK DECORATIONS */
+function drawDecorations(timestamp){
+    ctx.save();
 
-        const pulse = Math.sin(time * 0.001 + house.pulse) * 5;
-        const radius = house.r + pulse;
+    const hue=(timestamp*.035)%360;
 
-        let color = house.owner
-            ? colorString(house.owner)
-            : "rgba(255,255,255,.45)";
+    /* Angular perimeter frame */
+    const margin=22;
+    const length=48;
+
+    const corners=[
+        [margin,margin,1,1],
+        [width-margin,margin,-1,1],
+        [margin,height-margin,1,-1],
+        [width-margin,height-margin,-1,-1]
+    ];
+
+    corners.forEach(([x,y,sx,sy],i)=>{
+        const color=`hsl(${(hue+i*85)%360},100%,65%)`;
+        ctx.strokeStyle=color;
+        ctx.globalAlpha=.65;
+        ctx.lineWidth=1.4;
+
+        ctx.beginPath();
+        ctx.moveTo(x+sx*length,y);
+        ctx.lineTo(x,y);
+        ctx.lineTo(x,y+sy*length);
+        ctx.stroke();
+
+        ctx.globalAlpha=.9;
+        ctx.fillStyle=color;
+        ctx.fillRect(x+sx*9-2,y+sy*9-2,4,4);
+    });
+
+    /* Chromatic technical grid */
+    ctx.globalAlpha=.13;
+    ctx.lineWidth=.6;
+
+    for(let x=80;x<width;x+=120){
+        const color=`hsl(${(hue+x*.3)%360},100%,60%)`;
+        ctx.strokeStyle=color;
+        ctx.beginPath();
+        ctx.moveTo(x,0);
+        ctx.lineTo(x,height);
+        ctx.stroke();
+    }
+
+    for(let y=80;y<height;y+=120){
+        const color=`hsl(${(hue+y*.3+100)%360},100%,60%)`;
+        ctx.strokeStyle=color;
+        ctx.beginPath();
+        ctx.moveTo(0,y);
+        ctx.lineTo(width,y);
+        ctx.stroke();
+    }
+
+    /* Short neon signal bars along the edges */
+    ctx.globalAlpha=.65;
+    for(let i=0;i<24;i++){
+        const x=(i*137+40)%Math.max(width,1);
+        const y=(i*197+65)%Math.max(height,1);
+        const color=`hsl(${(hue+i*37)%360},100%,65%)`;
+
+        ctx.fillStyle=color;
+        ctx.fillRect(x,y,8+(i%4)*5,1.5);
+        ctx.fillRect(x,y+4,2,2);
+    }
+
+    /* Offset geometric fragments */
+    ctx.globalAlpha=.5;
+    for(let i=0;i<14;i++){
+        const x=(i*211+73)%Math.max(width,1);
+        const y=(i*163+31)%Math.max(height,1);
+        const color=`hsl(${(hue+i*51)%360},100%,65%)`;
+
+        ctx.strokeStyle=color;
+        ctx.lineWidth=1;
+        ctx.beginPath();
+        ctx.moveTo(x,y);
+        ctx.lineTo(x+8,y-8);
+        ctx.lineTo(x+18,y-8);
+        ctx.stroke();
+    }
+
+    /* Thin horizontal chromatic streaks */
+    ctx.globalAlpha=.22;
+    for(let i=0;i<7;i++){
+        const y=(i*height/7+timestamp*.025)%height;
+        const x=(i*193+timestamp*.08)%(Math.max(width,1));
+        const color=`hsl(${(hue+i*55)%360},100%,60%)`;
+
+        ctx.fillStyle=color;
+        ctx.fillRect(x,y,Math.min(70,width-x),1);
+    }
+
+    ctx.restore();
+}
+
+/* STATIC HOUSE GRAPHICS — PRESERVED */
+function drawHouses(){
+    houses.forEach(house=>{
+        const x=Math.round(house.x*width);
+        const y=Math.round(house.y*height);
+        const owned=!!house.owner;
+        const color=owned?colorString(house.color):"rgba(235,240,245,.72)";
+        const accent=owned?color:"rgba(235,240,245,.5)";
 
         ctx.save();
+        ctx.translate(x,y);
 
-        ctx.shadowBlur = 20 + house.intensity * 30;
-        ctx.shadowColor = color;
+        ctx.fillStyle="rgba(4,6,10,.92)";
+        ctx.fillRect(-13,-13,26,26);
 
-        ctx.strokeStyle = color;
-        ctx.globalAlpha = 0.2 + house.intensity * 0.8;
-        ctx.lineWidth = 1;
-
+        ctx.strokeStyle=accent;
+        ctx.lineWidth=owned?1.8:1;
+        ctx.globalAlpha=owned?1:.72;
         ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.moveTo(-13,-5);
+        ctx.lineTo(-13,-13);
+        ctx.lineTo(-5,-13);
+        ctx.moveTo(5,-13);
+        ctx.lineTo(13,-13);
+        ctx.lineTo(13,-5);
+        ctx.moveTo(13,5);
+        ctx.lineTo(13,13);
+        ctx.lineTo(5,13);
+        ctx.moveTo(-5,13);
+        ctx.lineTo(-13,13);
+        ctx.lineTo(-13,5);
         ctx.stroke();
 
-        ctx.globalAlpha *= 0.35;
         ctx.beginPath();
-        ctx.arc(x, y, radius * 0.55, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.fillStyle = color;
-        ctx.globalAlpha = 0.5 + house.intensity * 0.5;
-
-        ctx.beginPath();
-        ctx.arc(x, y, 2 + house.intensity * 3, 0, Math.PI * 2);
+        ctx.moveTo(-7,1);
+        ctx.lineTo(0,-7);
+        ctx.lineTo(7,1);
+        ctx.lineTo(7,7);
+        ctx.lineTo(-7,7);
+        ctx.closePath();
+        ctx.fillStyle=owned?color:"rgba(220,225,230,.16)";
         ctx.fill();
+        ctx.strokeStyle=accent;
+        ctx.lineWidth=1;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0,2);
+        ctx.lineTo(0,7);
+        ctx.strokeStyle="#050609";
+        ctx.lineWidth=1.5;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(9,-9);
+        ctx.lineTo(15,-15);
+        ctx.strokeStyle=accent;
+        ctx.lineWidth=owned?2:1;
+        ctx.stroke();
+
+        ctx.globalAlpha=owned?.9:.42;
+        ctx.fillStyle=accent;
+        ctx.fillRect(-17,-1,2,2);
+        ctx.fillRect(15,5,2,2);
+
+        if(owned){
+            ctx.globalAlpha=.16;
+            ctx.fillStyle=color;
+            ctx.fillRect(-19,-19,38,38);
+
+            ctx.globalAlpha=.9;
+            ctx.shadowColor=color;
+            ctx.shadowBlur=12;
+            ctx.strokeStyle=color;
+            ctx.lineWidth=1;
+            ctx.strokeRect(-15,-15,30,30);
+        }
 
         ctx.restore();
     });
 }
 
-function drawPlayer(x, y, color, local = false) {
-    const px = x * width;
-    const py = y * height;
-
-    const rgb = colorString(color);
+/* SPIKED PLAYER GRAPHICS */
+function drawPlayer(x,y,color,local=false,timestamp=0){
+    const px=x*width;
+    const py=y*height;
+    const rgb=colorString(color);
+    const rotation=timestamp*.0015+(local?0:1.2);
+    const spikes=8;
+    const outer=local?9:7;
+    const inner=local?3.8:3;
 
     ctx.save();
+    ctx.translate(px,py);
+    ctx.rotate(rotation);
 
-    ctx.shadowColor = rgb;
-    ctx.shadowBlur = local ? 30 : 20;
-
-    ctx.fillStyle = rgb;
-    ctx.globalAlpha = 0.9;
+    ctx.shadowColor=rgb;
+    ctx.shadowBlur=local?24:16;
+    ctx.fillStyle=rgb;
 
     ctx.beginPath();
-    ctx.arc(px, py, local ? 5 : 4, 0, Math.PI * 2);
+    for(let i=0;i<spikes*2;i++){
+        const angle=(i*Math.PI/spikes)-Math.PI/2;
+        const radius=i%2===0?outer:inner;
+        const sx=Math.cos(angle)*radius;
+        const sy=Math.sin(angle)*radius;
+        if(i===0)ctx.moveTo(sx,sy);
+        else ctx.lineTo(sx,sy);
+    }
+    ctx.closePath();
     ctx.fill();
 
-    ctx.globalAlpha = 0.3;
-    ctx.strokeStyle = rgb;
-    ctx.lineWidth = 1;
-
+    ctx.shadowBlur=0;
+    ctx.strokeStyle=rgb;
+    ctx.globalAlpha=.45;
+    ctx.lineWidth=.8;
     ctx.beginPath();
-    ctx.arc(px, py, local ? 15 : 12, 0, Math.PI * 2);
+    ctx.arc(0,0,local?16:12,0,Math.PI*2);
     ctx.stroke();
 
     ctx.restore();
 }
 
-function drawConnections() {
+function drawConnections(){
     ctx.save();
+    ctx.globalAlpha=.12;
+    ctx.lineWidth=.5;
 
-    ctx.lineWidth = 0.5;
-    ctx.globalAlpha = 0.12;
-
-    remotePlayers.forEach(remote => {
-        ctx.strokeStyle = colorString(remote.color);
-
+    remotePlayers.forEach(remote=>{
+        ctx.strokeStyle=colorString(remote.color);
         ctx.beginPath();
-        ctx.moveTo(player.x * width, player.y * height);
-        ctx.lineTo(remote.x * width, remote.y * height);
+        ctx.moveTo(player.x*width,player.y*height);
+        ctx.lineTo(remote.x*width,remote.y*height);
         ctx.stroke();
     });
 
     ctx.restore();
 }
 
-function render(time) {
+function render(timestamp){
     drawBackground();
-    drawHouses(time);
+    drawDecorations(timestamp);
+    drawHouses();
     drawConnections();
 
-    remotePlayers.forEach(remote => {
-        drawPlayer(remote.x, remote.y, remote.color);
+    remotePlayers.forEach(remote=>{
+        drawPlayer(remote.x,remote.y,remote.color,false,timestamp);
     });
 
-    drawPlayer(player.x, player.y, player.color, true);
+    drawPlayer(player.x,player.y,player.color,true,timestamp);
 }
 
-/* --------------------------------------------------
-   MAIN LOOP
--------------------------------------------------- */
+/* INVISIBLE STAGE TRANSITIONS */
+function updateStage(){
+    const stage=Math.floor(Date.now()/STAGE_DURATION);
+    if(stage!==currentStage){
+        changeStage(stage);
+    }
+}
 
-function loop(timestamp) {
+/* MAIN LOOP */
+function loop(timestamp){
+    updateStage();
     updatePlayer();
     render(timestamp);
     sendPlayerState(timestamp);
-
     requestAnimationFrame(loop);
 }
 
 requestAnimationFrame(loop);
 
-/* --------------------------------------------------
-   PLAY
--------------------------------------------------- */
-
-document.getElementById("play-button").addEventListener("click", async () => {
+/* PLAY */
+document.getElementById("play-button").addEventListener("click",async()=>{
     document.getElementById("play-screen").classList.add("hidden");
-
     await startMultiplayer();
 });
 
-/* --------------------------------------------------
-   AUTOMATIC DEPARTURE
--------------------------------------------------- */
-
-window.addEventListener("pagehide", () => {
-    if (room) {
-        room.leave();
-    }
+/* AUTOMATIC DEPARTURE */
+window.addEventListener("pagehide",()=>{
+    if(room)room.leave();
 });
-
 </script>
 </body>
 </html>
