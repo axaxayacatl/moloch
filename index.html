@@ -1,9 +1,9 @@
-<doctype html>
+
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="license" content="MIT">
 <title>MOLOCH</title>
 
 <style>
@@ -36,23 +36,59 @@ canvas{display:block}
 }
 
 /* Multiplayer cursors */
+
 #moloch-cursors{
   position:fixed;
   inset:0;
-  pointer-events:none;
   overflow:hidden;
+  pointer-events:none;
   z-index:10;
 }
 
 .moloch-cursor{
   position:absolute;
-  width:10px;
-  height:10px;
+  width:9px;
+  height:9px;
   border-radius:50%;
   transform:translate(-50%,-50%);
   pointer-events:none;
+  box-shadow:0 0 9px currentColor,0 0 20px currentColor;
   will-change:left,top;
-  box-shadow:0 0 8px currentColor,0 0 18px currentColor;
+}
+
+/* Single Play control */
+
+#play-screen{
+  position:fixed;
+  inset:0;
+  z-index:30;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(0,0,0,0.12);
+}
+
+#play-button{
+  appearance:none;
+  background:rgba(0,0,0,0.65);
+  border:1px solid rgba(255,255,255,0.55);
+  color:white;
+  padding:13px 32px;
+  font-family:monospace;
+  font-size:13px;
+  letter-spacing:5px;
+  cursor:pointer;
+  transition:background .2s,border-color .2s;
+}
+
+#play-button:hover{
+  background:rgba(255,255,255,0.12);
+  border-color:white;
+}
+
+#play-button:focus-visible{
+  outline:1px solid white;
+  outline-offset:5px;
 }
 </style>
 </head>
@@ -63,12 +99,17 @@ canvas{display:block}
 <canvas id="c"></canvas>
 <div id="moloch-cursors"></div>
 
-<script>
-"use strict";
+<div id="play-screen">
+  <button id="play-button" type="button">PLAY</button>
+</div>
+
+<script type="module">
+
+import {joinRoom} from "https://esm.run/trystero@0.27.0";
 
 /* =========================================
    MOLOCH
-   Original gameplay and rendering
+   Original game
    ========================================= */
 
 const c=document.getElementById("c");
@@ -134,15 +175,6 @@ let keys={};
 
 addEventListener("keydown",e=>{
   keys[e.key]=true;
-
-  if([
-    "ArrowUp",
-    "ArrowDown",
-    "ArrowLeft",
-    "ArrowRight"
-  ].includes(e.key)){
-    e.preventDefault();
-  }
 });
 
 addEventListener("keyup",e=>{
@@ -154,168 +186,219 @@ addEventListener("blur",()=>{
 });
 
 /* =========================================
-   MULTIPLAYER
-   Automatic same-origin synchronization
-   No lobby, buttons, or interface
+   MULTIPLAYER CONFIGURATION
    ========================================= */
 
-const MULTIPLAYER_CHANNEL="moloch-world-v1";
-
-const multiplayer={
-  id:(
-    typeof crypto!=="undefined" && crypto.randomUUID
-      ? crypto.randomUUID()
-      : Math.random().toString(36).slice(2)+Date.now()
-  ),
-
-  color:`hsl(${Math.floor(Math.random()*360)},100%,65%)`,
-
-  channel:null,
-  players:new Map(),
-
-  pointer:{
-    x:0.5,
-    y:0.5
-  },
-
-  lastSent:0
-};
+const APP_ID="axayacatl.neocities.org/moloch";
+const ROOM_ID="global";
 
 const cursorLayer=document.getElementById("moloch-cursors");
 
-if("BroadcastChannel" in window){
+const myColor="#"+Math.floor(Math.random()*16777215)
+  .toString(16).padStart(6,"0");
 
-  multiplayer.channel=new BroadcastChannel(MULTIPLAYER_CHANNEL);
+const localCursor=document.createElement("div");
+localCursor.className="moloch-cursor";
+localCursor.style.background=myColor;
+localCursor.style.color=myColor;
+cursorLayer.appendChild(localCursor);
 
-  multiplayer.channel.addEventListener("message",event=>{
-    const data=event.data;
-
-    if(!data || data.id===multiplayer.id) return;
-
-    if(data.type==="leave"){
-      removeRemotePlayer(data.id);
-      return;
-    }
-
-    if(data.type!=="state") return;
-
-    let remote=multiplayer.players.get(data.id);
-
-    if(!remote){
-      const cursor=document.createElement("div");
-
-      cursor.className="moloch-cursor";
-      cursor.style.background=data.color || "#ffffff";
-      cursor.style.color=data.color || "#ffffff";
-
-      cursorLayer.appendChild(cursor);
-
-      remote={
-        id:data.id,
-        color:data.color || "#ffffff",
-        cursor,
-        x:0.5,
-        y:0.5,
-        playerX:0.5,
-        playerY:0.5,
-        lastSeen:Date.now()
-      };
-
-      multiplayer.players.set(data.id,remote);
-    }
-
-    remote.color=data.color || remote.color;
-    remote.x=data.pointerX ?? remote.x;
-    remote.y=data.pointerY ?? remote.y;
-    remote.playerX=data.playerX ?? remote.playerX;
-    remote.playerY=data.playerY ?? remote.playerY;
-    remote.lastSeen=Date.now();
-
-    remote.cursor.style.background=remote.color;
-    remote.cursor.style.color=remote.color;
-
-    remote.cursor.style.left=(remote.x*innerWidth)+"px";
-    remote.cursor.style.top=(remote.y*innerHeight)+"px";
-  });
-
-}
-
-function removeRemotePlayer(id){
-  const remote=multiplayer.players.get(id);
-
-  if(!remote) return;
-
-  remote.cursor.remove();
-  multiplayer.players.delete(id);
-}
-
-/* Track the local pointer without affecting movement. */
+let pointerX=innerWidth/2;
+let pointerY=innerHeight/2;
 
 addEventListener("pointermove",event=>{
-  multiplayer.pointer.x=event.clientX/innerWidth;
-  multiplayer.pointer.y=event.clientY/innerHeight;
+  pointerX=event.clientX;
+  pointerY=event.clientY;
+
+  localCursor.style.left=pointerX+"px";
+  localCursor.style.top=pointerY+"px";
 },{passive:true});
 
-/* Send player and pointer positions. */
+localCursor.style.left=pointerX+"px";
+localCursor.style.top=pointerY+"px";
 
-function sendMultiplayerState(force=false){
-  if(!multiplayer.channel) return;
+/* =========================================
+   PEER-TO-PEER WORLD
+   ========================================= */
 
-  const now=performance.now();
+let room=null;
+let sendPlayerState=null;
+let multiplayerStarted=false;
 
-  if(!force && now-multiplayer.lastSent<40) return;
+const remotePlayers=new Map();
 
-  multiplayer.lastSent=now;
+function createRemoteCursor(userId,color){
+  if(remotePlayers.has(userId)){
+    return remotePlayers.get(userId);
+  }
 
-  multiplayer.channel.postMessage({
-    type:"state",
-    id:multiplayer.id,
-    color:multiplayer.color,
+  const cursor=document.createElement("div");
+  cursor.className="moloch-cursor";
 
-    pointerX:multiplayer.pointer.x,
-    pointerY:multiplayer.pointer.y,
+  cursor.style.background=color;
+  cursor.style.color=color;
 
-    playerX:player.x/c.width,
-    playerY:player.y/c.height,
+  cursorLayer.appendChild(cursor);
 
-    timestamp:Date.now()
+  const remote={
+    id:userId,
+    color,
+    x:0.5,
+    y:0.5,
+    pointerX:0.5,
+    pointerY:0.5,
+    cursor
+  };
+
+  remotePlayers.set(userId,remote);
+
+  return remote;
+}
+
+function removeRemotePlayer(userId){
+  const remote=remotePlayers.get(userId);
+
+  if(!remote)return;
+
+  remote.cursor.remove();
+  remotePlayers.delete(userId);
+}
+
+function receivePlayerState(data,meta){
+  if(!data || !meta || !meta.userId)return;
+
+  const userId=meta.userId;
+
+  if(userId===localUserId)return;
+
+  const remote=createRemoteCursor(
+    userId,
+    data.color||"#ffffff"
+  );
+
+  remote.color=data.color||remote.color;
+
+  remote.x=data.x;
+  remote.y=data.y;
+
+  remote.pointerX=data.pointerX;
+  remote.pointerY=data.pointerY;
+
+  remote.cursor.style.background=remote.color;
+  remote.cursor.style.color=remote.color;
+
+  remote.cursor.style.left=
+    (remote.pointerX*innerWidth)+"px";
+
+  remote.cursor.style.top=
+    (remote.pointerY*innerHeight)+"px";
+}
+
+let localUserId=null;
+
+function sendState(){
+  if(!sendPlayerState)return;
+
+  sendPlayerState({
+    x:player.x/c.width,
+    y:player.y/c.height,
+
+    pointerX:pointerX/innerWidth,
+    pointerY:pointerY/innerHeight,
+
+    color:myColor,
+    sigil:player.sigil
   });
 }
 
-/* Remove players who have stopped sending updates. */
+async function enterMultiplayer(){
 
-setInterval(()=>{
-  const now=Date.now();
+  if(multiplayerStarted)return;
 
-  for(const [id,remote] of multiplayer.players){
-    if(now-remote.lastSeen>5000){
-      removeRemotePlayer(id);
-    }
-  }
+  multiplayerStarted=true;
 
-  sendMultiplayerState(true);
-},1000);
+  document.getElementById("play-screen").remove();
 
-/* Announce this player immediately. */
+  t0=Date.now();
 
-sendMultiplayerState(true);
+  try{
 
-addEventListener("pagehide",()=>{
-  if(multiplayer.channel){
-    multiplayer.channel.postMessage({
-      type:"leave",
-      id:multiplayer.id
+    /*
+      Trystero uses public Nostr relays for discovery
+      and WebRTC data channels for direct gameplay.
+    */
+
+    room=joinRoom(
+      {
+        appId:APP_ID,
+        identity:"none"
+      },
+      ROOM_ID,
+      {
+        onJoinError:({peerId,error})=>{
+          console.warn("MOLOCH peer connection error:",peerId,error);
+        }
+      }
+    );
+
+    const identity=await room.getSelf();
+    localUserId=identity.userId;
+
+    const stateAction=room.makeAction("moloch-player-state");
+
+    sendPlayerState=stateAction.send;
+
+    stateAction.onMessage((data,meta)=>{
+      receivePlayerState(data,meta);
     });
 
-    multiplayer.channel.close();
+    /*
+      Existing players announce their current state
+      when another player joins.
+    */
+
+    room.onUserJoin(({userId})=>{
+      sendState();
+    });
+
+    /*
+      Remove remote cursors when a player leaves.
+    */
+
+    room.onUserLeave(({userId})=>{
+      removeRemotePlayer(userId);
+    });
+
+    room.onError(error=>{
+      console.warn("MOLOCH multiplayer:",error);
+    });
+
+    sendState();
+
+  }catch(error){
+
+    console.error("MOLOCH multiplayer initialization failed:",error);
+
+    multiplayerStarted=false;
+
   }
-});
+}
+
+/* =========================================
+   PLAY
+   ========================================= */
+
+document.getElementById("play-button").addEventListener(
+  "click",
+  enterMultiplayer
+);
 
 /* =========================================
    ORIGINAL GAME UPDATE
    ========================================= */
 
 function update(){
+
   let t=(Date.now()-t0)/9000;
 
   if(t>1){
@@ -325,10 +408,10 @@ function update(){
 
   let a=0.18;
 
-  if(keys["ArrowUp"]) player.vy-=a;
-  if(keys["ArrowDown"]) player.vy+=a;
-  if(keys["ArrowLeft"]) player.vx-=a;
-  if(keys["ArrowRight"]) player.vx+=a;
+  if(keys["ArrowUp"])player.vy-=a;
+  if(keys["ArrowDown"])player.vy+=a;
+  if(keys["ArrowLeft"])player.vx-=a;
+  if(keys["ArrowRight"])player.vx+=a;
 
   player.vx*=0.92;
   player.vy*=0.92;
@@ -342,17 +425,19 @@ function update(){
   player.intensity*=0.95;
 
   for(let h of houses){
+
     let dx=player.x-h.x;
     let dy=player.y-h.y;
     let d=Math.hypot(dx,dy);
 
     if(d<h.r){
       h.owner=true;
-      player.intensity=Math.min(1,player.intensity+0.08);
+      player.intensity=Math.min(
+        1,
+        player.intensity+0.08
+      );
     }
   }
-
-  sendMultiplayerState();
 
   return t;
 }
@@ -362,7 +447,11 @@ function update(){
    ========================================= */
 
 function glow(x0,y0,r,color,alpha){
-  let g=x.createRadialGradient(x0,y0,0,x0,y0,r);
+
+  let g=x.createRadialGradient(
+    x0,y0,0,
+    x0,y0,r
+  );
 
   g.addColorStop(0,`rgba(${color},${alpha})`);
   g.addColorStop(1,"rgba(0,0,0,0)");
@@ -374,7 +463,9 @@ function glow(x0,y0,r,color,alpha){
 }
 
 function aura(x0,y0,color,intensity){
+
   for(let i=0;i<3;i++){
+
     glow(
       x0+(Math.random()-0.5)*10*intensity,
       y0+(Math.random()-0.5)*10*intensity,
@@ -382,11 +473,12 @@ function aura(x0,y0,color,intensity){
       color.join(","),
       0.12*intensity
     );
+
   }
 }
 
 /* =========================================
-   ORIGINAL DRAWING + REMOTE PLAYERS
+   DRAW
    ========================================= */
 
 function draw(t){
@@ -395,6 +487,7 @@ function draw(t){
   x.fillRect(0,0,c.width,c.height);
 
   for(let h of houses){
+
     let pulse=60+Math.sin(t*6+h.pulse)*10;
 
     glow(
@@ -403,61 +496,118 @@ function draw(t){
       h.owner?"0,255,140":"200,200,255",
       h.owner?0.18:0.06
     );
+
   }
 
   let sig=SIGILS[player.sigil];
 
-  aura(player.x,player.y,sig,player.intensity+0.5);
+  aura(
+    player.x,
+    player.y,
+    sig,
+    player.intensity+0.5
+  );
 
   x.fillStyle=`rgb(${sig[0]},${sig[1]},${sig[2]})`;
   x.beginPath();
   x.arc(player.x,player.y,3,0,7);
   x.fill();
 
-  x.strokeStyle="rgba(255,255,255,0.03)";
+  /*
+    Remote players appear in the same world
+    using their individually assigned colors.
+  */
 
-  for(let i=0;i<6;i++){
-    x.beginPath();
-    x.moveTo(0,Math.sin(t*3+i)*c.height);
-    x.lineTo(c.width,Math.cos(t*2+i)*c.height);
-    x.stroke();
-  }
+  for(const remote of remotePlayers.values()){
 
-  /* Remote player markers.
-     Each player has an independently assigned color. */
-
-  for(const remote of multiplayer.players.values()){
-
-    const rx=remote.playerX*c.width;
-    const ry=remote.playerY*c.height;
+    const rx=remote.x*c.width;
+    const ry=remote.y*c.height;
 
     x.save();
 
-    x.shadowBlur=14;
-    x.shadowColor=remote.color;
     x.fillStyle=remote.color;
+    x.shadowColor=remote.color;
+    x.shadowBlur=15;
 
     x.beginPath();
-    x.arc(rx,ry,3,0,Math.PI*2);
+    x.arc(rx,ry,4,0,Math.PI*2);
     x.fill();
 
     x.restore();
+
   }
+
+  x.strokeStyle="rgba(255,255,255,0.03)";
+
+  for(let i=0;i<6;i++){
+
+    x.beginPath();
+
+    x.moveTo(
+      0,
+      Math.sin(t*3+i)*c.height
+    );
+
+    x.lineTo(
+      c.width,
+      Math.cos(t*2+i)*c.height
+    );
+
+    x.stroke();
+
+  }
+
 }
 
 /* =========================================
    MAIN LOOP
    ========================================= */
 
+let lastNetworkUpdate=0;
+
 function loop(){
+
   requestAnimationFrame(loop);
 
   let t=update();
+
   draw(t);
+
+  /*
+    20 updates per second per player.
+    Gameplay data travels directly through
+    WebRTC connections.
+  */
+
+  if(multiplayerStarted && sendPlayerState){
+
+    const now=performance.now();
+
+    if(now-lastNetworkUpdate>=50){
+
+      lastNetworkUpdate=now;
+      sendState();
+
+    }
+
+  }
+
 }
 
 loop();
 
+/* =========================================
+   DISCONNECT ON EXIT
+   ========================================= */
+
+addEventListener("pagehide",()=>{
+  if(room){
+    room.leave();
+    room=null;
+  }
+});
+
 </script>
+
 </body>
 </html>
